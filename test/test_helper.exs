@@ -1,9 +1,8 @@
+Code.compiler_options(ignore_module_conflict: true)
+
 Logger.configure(level: :info)
 ExUnit.configure(exclude: [:pending, :without_conflict_target])
 ExUnit.start()
-
-Code.compiler_options(ignore_module_conflict: true)
-Application.ensure_all_started(:postgrex)
 
 # Configure Ecto for support and tests
 Application.put_env(:ecto, :lock_for_update, "FOR UPDATE")
@@ -11,8 +10,8 @@ Application.put_env(:ecto, :primary_key_type, :id)
 
 # Configure CockroachDB connection
 Application.put_env(:cockroachdb_sandbox, :cdb_test_url,
-  #"ecto://" <> (System.get_env("CDB_URL") || "root@localhost:26257")
-  "ecto://" <> (System.get_env("CDB_URL") || "postgres@localhost:5432")
+  "ecto://" <> (System.get_env("CDB_URL") || "root@localhost:26257")
+  #"ecto://" <> (System.get_env("CDB_URL") || "postgres@localhost:5432")
 )
 
 # Load support files

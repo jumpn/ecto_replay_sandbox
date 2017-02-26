@@ -107,27 +107,51 @@ defmodule CockroachDBSandboxTest do
     # This is a failed query but it should not taint the sandbox transaction
     {:error, _} = TestRepo.query("INVALID")
     {:ok, _}    = TestRepo.insert(%Post{}, skip_transaction: true)
+    assert TestRepo.all(Post) |> Enum.count == 2
 
     Sandbox.checkin(TestRepo)
   end
 
-  @tag :wip
-  test "runs inside a sandbox even with failed transaction" do
+  test "works inside failed transaction is rollbacked" do
+    Sandbox.checkout(TestRepo)
+
+    TestRepo.transaction fn ->
+      TestRepo.insert(%Post{})
+      # This is a failed query to trigger a rollback
+      {:error, _} = TestRepo.query("INVALID")
+    end
+    assert TestRepo.all(Post) == []
+
+    Sandbox.checkin(TestRepo)
+  end
+
+  test "work executed before failed transaction is still availaible" do
+    Sandbox.checkout(TestRepo)
+
+    {:ok, _} = TestRepo.insert(%Post{}, skip_transaction: true)
+    TestRepo.transaction fn ->
+      # This is a failed query to trigger a rollback
+      {:error, _} = TestRepo.query("INVALID")
+    end
+    assert TestRepo.all(Post) != []
+
+    Sandbox.checkin(TestRepo)
+  end
+
+  test "work inside failed transaction is rollbacked" do
     Sandbox.checkout(TestRepo)
 
     {:ok, _}    = TestRepo.insert(%Post{}, skip_transaction: true)
     TestRepo.transaction fn ->
-      # This is a failed query but it should not taint the sandbox transaction
+      TestRepo.insert(%Post{})
+      # This is a failed query to trigger a rollback
       {:error, _} = TestRepo.query("INVALID")
     end
-    {:ok, _}    = TestRepo.insert(%Post{}, skip_transaction: true)
-    
-    assert 2 == TestRepo.all(Post) |> Enum.count
+    assert 1 == TestRepo.all(Post) |> Enum.count
 
     Sandbox.checkin(TestRepo)
   end
 
-  @tag :pending
   test "works when preloading associations from another process" do
     Sandbox.checkout(TestRepo)
     assert TestRepo.insert(%Post{})

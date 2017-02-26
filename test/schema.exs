@@ -13,6 +13,24 @@ defmodule CockroachDBSandbox.Integration.Schema do
   end
 end
 
+defmodule CockroachDBSandbox.Integration.User do
+  @moduledoc """
+  This module is used to test:
+
+    * UTC Timestamps
+    * Relationships
+
+  """
+  use CockroachDBSandbox.Integration.Schema
+
+  schema "users" do
+    field :name, :string
+    has_many :comments, CockroachDBSandbox.Integration.Comment, foreign_key: :author_id, on_delete: :nilify_all, on_replace: :nilify
+    has_many :posts, CockroachDBSandbox.Integration.Post, foreign_key: :author_id, on_delete: :nothing, on_replace: :delete
+    timestamps(type: :utc_datetime)
+  end
+end
+
 defmodule CockroachDBSandbox.Integration.Post do
   @moduledoc """
   This module is used to test:
@@ -37,11 +55,34 @@ defmodule CockroachDBSandbox.Integration.Post do
     field :visits, :integer
     field :intensity, :float
     field :posted, :date
+    has_many :comments, CockroachDBSandbox.Integration.Comment, on_delete: :delete_all, on_replace: :delete
+    belongs_to :author, CockroachDBSandbox.Integration.User
     timestamps()
   end
 
   def changeset(schema, params) do
     cast(schema, params, ~w(counter title text temp public cost visits
                            intensity posted))
+  end
+end
+
+defmodule CockroachDBSandbox.Integration.Comment do
+  @moduledoc """
+  This module is used to test:
+
+    * Relationships
+    * Dependent callbacks
+
+  """
+  use CockroachDBSandbox.Integration.Schema
+
+  schema "comments" do
+    field :text, :string
+    belongs_to :post, CockroachDBSandbox.Integration.Post
+    belongs_to :author, CockroachDBSandbox.Integration.User
+  end
+
+  def changeset(schema, params) do
+    Ecto.Changeset.cast(schema, params, [:text])
   end
 end

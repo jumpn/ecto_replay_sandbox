@@ -308,7 +308,6 @@ defmodule Ecto.Adapters.SQL.Sandbox do
     end
 
     def disconnect(err, {conn_mod, state, _in_transaction?, _fixture_state}) do
-      "disconnect" |> IO.puts
       conn_mod.disconnect(err, state)
     end
 
@@ -316,20 +315,24 @@ defmodule Ecto.Adapters.SQL.Sandbox do
     def checkin(state), do: proxy(:checkin, state, [])
     def ping(state), do: proxy(:ping, state, [])
 
-    
-    def handle_begin(opts, {conn_mod, state, false, {sandbox_log, _tx_log}}) do
-       "begin" |> IO.puts 
+    def handle_begin(_opts, {conn_mod, state, false, {sandbox_log, _tx_log}}) do
       {:ok, @begin_result, {conn_mod, state, true, {sandbox_log, []}}}
     end
-    def handle_commit(opts, {conn_mod, state, true, {sandbox_log, tx_log}}) do
-      "commit" |> IO.puts 
-      {:ok, @commit_result, {conn_mod, state, false, {sandbox_log ++ tx_log, []}}}
+    def handle_commit(_opts, {conn_mod, state, true, {sandbox_log, tx_log}}) do
+      {state, sandbox_log} = case sandbox_log do
+        [:error_detected | tail] -> 
+          restart_result = restart_sandbox_tx(conn_mod, state)
+          {elem(restart_result, 2),[:replay_needed] ++ tail}
+        _ ->
+          {state, sandbox_log ++ tx_log}
+      end
+ 
+      {:ok, @commit_result, {conn_mod, state, false, {sandbox_log, []}}}
     end
     def handle_rollback(opts, {conn_mod, state, true, {sandbox_log, _}}) do
-      "rollback" |> IO.puts 
-      case rewind(conn_mod, state, sandbox_log, opts) do
+      case restart_sandbox_tx(conn_mod, state, opts) do
         {:ok, _, conn_state} ->
-          {:ok, @rollback_result, {conn_mod, conn_state, false, {sandbox_log, []}}}
+          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed] ++ sandbox_log, []}}}
         error -> 
           pos = :erlang.tuple_size(error)
           :erlang.setelement(pos, error, {conn_mod, :erlang.element(pos, error), false, {sandbox_log, []}})
@@ -353,17 +356,32 @@ defmodule Ecto.Adapters.SQL.Sandbox do
     def handle_info(msg, state),
       do: proxy(:handle_info, state, [msg])
 
-    defp proxy(fun, {conn_mod, state, in_transaction?, log_state}, args) do
-      fun |> IO.puts
+    defp proxy(fun, {conn_mod, state, in_transaction?, {sandbox_log, _tx_log} = log_state}, args) do
+      # Handle replay
+      log_state = case sandbox_log do
+        [head | tail] when head == :replay_needed ->
+          tail
+          |> Enum.each(fn {replay_fun, replay_args} -> {:ok, _, _} = apply(conn_mod, replay_fun, replay_args ++ [state]) end)
+
+          {tail, []}
+        _ ->
+          log_state
+      end
+
+      # Execute command
       {status, result, state} = apply(conn_mod, fun, args ++ [state])
+
+      # Handle error
       {state, log_state} = case status do
         :ok ->
           {state, log_command(fun, args, in_transaction?, log_state)}
         :error ->
-          "Detected error" |> IO.puts
-          rewind_result = rewind(conn_mod, state, elem(log_state, 0))
-          rewind_result |> IO.inspect
-          {elem(rewind_result, 2),{elem(log_state, 0),[]}}
+          if(in_transaction?) do
+            {state, {[:error_detected] ++ elem(log_state, 0), []}}
+          else
+            restart_result = restart_sandbox_tx(conn_mod, state)
+            {elem(restart_result, 2),{[:replay_needed] ++ elem(log_state, 0), []}}
+          end
       end
 
       {status, result, {conn_mod, state, in_transaction?, log_state}}
@@ -382,21 +400,11 @@ defmodule Ecto.Adapters.SQL.Sandbox do
       end
     end
 
-    defp rewind(conn_mod, conn_state, sandbox_log, opts \\ []) do
-      "rewind" |> IO.puts
+    defp restart_sandbox_tx(conn_mod, conn_state, opts \\ []) do
       with {:ok, _, conn_state} <- conn_mod.handle_rollback([mode: :transaction] ++ opts, conn_state),
-           {:ok, _, conn_state} = result <- conn_mod.handle_begin([mode: :transaction], conn_state) do
-        replay_log(conn_mod, result, sandbox_log)
+           {:ok, _, _} = begin_result <- conn_mod.handle_begin([mode: :transaction], conn_state) do
+        begin_result
       end
-    end
-
-    defp replay_log(conn_mod, begin_result, sandbox_log) do
-      sandbox_log|> Enum.reduce_while(begin_result, fn({fun, args}, {:ok, _, state}) ->
-        case apply(conn_mod, fun, args ++ [state]) do
-          {:ok, _, _} = result -> {:cont, result}
-          error -> {:halt, error}
-        end
-      end)
     end
 
   end
@@ -462,7 +470,6 @@ defmodule Ecto.Adapters.SQL.Sandbox do
   def mode(repo, mode)
       when mode in [:auto, :manual]
       when elem(mode, 0) == :shared and is_pid(elem(mode, 1)) do
-        "c.mode" |> IO.puts
     {name, opts} = repo.__pool__
 
     if opts[:pool] != DBConnection.Ownership do
