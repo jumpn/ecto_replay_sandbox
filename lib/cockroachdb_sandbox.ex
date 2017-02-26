@@ -358,14 +358,16 @@ defmodule Ecto.Adapters.SQL.Sandbox do
 
     defp proxy(fun, {conn_mod, state, in_transaction?, {sandbox_log, _tx_log} = log_state}, args) do
       # Handle replay
-      log_state = case sandbox_log do
+      {state, log_state} = case sandbox_log do
         [head | tail] when head == :replay_needed ->
-          tail
-          |> Enum.each(fn {replay_fun, replay_args} -> {:ok, _, _} = apply(conn_mod, replay_fun, replay_args ++ [state]) end)
-
-          {tail, []}
+          state = tail
+            |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
+                {status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
+                state
+              end)
+          {state, {tail, []}}
         _ ->
-          log_state
+          {state, log_state}
       end
 
       # Execute command
@@ -389,7 +391,7 @@ defmodule Ecto.Adapters.SQL.Sandbox do
 
     defp log_command(fun, args, in_transactions?, {sandbox_log, tx_log}) do
       case fun do
-        command when command in [:handle_prepare, :handle_execute, :handle_close] ->
+        command when command in [:handle_execute, :handle_close, :handle_declare, :handle_first, :handle_next, :handle_deallocate] ->
           if in_transactions? do
             {sandbox_log, tx_log ++ [{fun, args}]}
           else
