@@ -29,4 +29,4 @@ def deps do
 end
 ```
 
-> You need to declare this dependencie after Ecto in order to make sure that we override the default Ecto Sandbox.
+> You need to declare this dependency after Ecto in order to make sure that we override the default Ecto Sandbox.
