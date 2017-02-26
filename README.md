@@ -30,3 +30,7 @@ end
 ```
 
 > You need to declare this dependency after Ecto in order to make sure that we override the default Ecto Sandbox.
+
+## Credits
+
+I'd like to give special thanks James Fish (@fishcakez) for his help getting this working and always taking the time to offer guidance or otherwise feedback the CockroachDB team so that we can use Ecto with CockroachDB with little to no friction.
