@@ -33,4 +33,4 @@ end
 
 ## Credits
 
-I'd like to give special thanks James Fish (@fishcakez) for his help getting this working and always taking the time to offer guidance or otherwise feedback the CockroachDB team so that we can use Ecto with CockroachDB with little to no friction.
+I'd like to give special thanks to James Fish (@fishcakez) for his help getting this working and always taking the time to offer guidance or otherwise feedback the CockroachDB team so that we can use Ecto with CockroachDB with little to no friction.
