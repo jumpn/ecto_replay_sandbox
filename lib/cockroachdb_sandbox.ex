@@ -1,4 +1,4 @@
-defmodule Ecto.Adapters.SQL.Sandbox do
+defmodule CockroachDB.Sandbox do
   @moduledoc ~S"""
   A pool for concurrent transactional tests.
 
@@ -559,6 +559,27 @@ defmodule Ecto.Adapters.SQL.Sandbox do
   def allow(repo, parent, allow, _opts \\ []) do
     {name, opts} = repo.__pool__
     DBConnection.Ownership.ownership_allow(name, parent, allow, opts)
+  end
+
+  def ensure_all_started(app, type \\ :temporary) do
+    DBConnection.Ownership.ensure_all_started(app, type)
+  end
+
+  def child_spec(module, opts, child_opts) do
+    DBConnection.Ownership.child_spec(module, opts, child_opts)
+  end
+
+  @doc """
+  Runs a function outside of the sandbox.
+  """
+  def unboxed_run(repo, fun) do
+    checkin(repo)
+    checkout(repo, sandbox: false)
+    try do
+      fun.()
+    after
+      checkin(repo)
+    end
   end
 
   defp proxy_pool(repo) do
