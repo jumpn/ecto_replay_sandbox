@@ -1,8 +1,7 @@
 defmodule CockroachDBSandboxTest do
   use ExUnit.Case
 
-  #alias CockroachDBSandbox, as: Sandbox
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CockroachDBSandbox, as: Sandbox
   alias CockroachDBSandbox.Integration.TestRepo
   alias CockroachDBSandbox.Integration.Post
 

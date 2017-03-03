@@ -47,5 +47,5 @@ _   = Ecto.Adapters.Postgres.storage_down(TestRepo.config)
 {:ok, _pid} = TestRepo.start_link
 
 :ok = Ecto.Migrator.up(TestRepo, 0, CockroachDBSandbox.Integration.Migration, log: false)
-Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
+CockroachDBSandbox.mode(TestRepo, :manual)
 Process.flag(:trap_exit, true)

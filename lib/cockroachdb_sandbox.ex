@@ -1,4 +1,4 @@
-defmodule CockroachDB.Sandbox do
+defmodule CockroachDBSandbox do
   @moduledoc ~S"""
   A pool for concurrent transactional tests.
 
