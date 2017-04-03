@@ -18,7 +18,7 @@ defmodule CockroachDBSandbox.Mixfile do
 
   defp deps do
     [
-      {:ecto, "~> 2.1"},
+      {:ecto, git: "git@github.com:elixir-ecto/ecto.git"},
       {:db_connection, "~> 1.1"},
       {:postgrex, git: "git@github.com:jumpn/postgrex.git", override: true},
     ]
