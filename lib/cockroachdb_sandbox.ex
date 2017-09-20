@@ -322,7 +322,7 @@ defmodule CockroachDBSandbox do
       {state, sandbox_log} = case sandbox_log do
         [:error_detected | tail] -> 
           restart_result = restart_sandbox_tx(conn_mod, state)
-          {elem(restart_result, 2),[:replay_needed] ++ tail}
+          {elem(restart_result, 2),[:replay_needed | tail]}
         _ ->
           {state, sandbox_log ++ tx_log}
       end
@@ -330,9 +330,13 @@ defmodule CockroachDBSandbox do
       {:ok, @commit_result, {conn_mod, state, false, {sandbox_log, []}}}
     end
     def handle_rollback(opts, {conn_mod, state, true, {sandbox_log, _}}) do
+      sandbox_log = case sandbox_log do
+        [:error_detected | tail] -> tail
+        _ -> sandbox_log
+      end
       case restart_sandbox_tx(conn_mod, state, opts) do
         {:ok, _, conn_state} ->
-          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed] ++ sandbox_log, []}}}
+          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed | sandbox_log], []}}}
         error -> 
           pos = :erlang.tuple_size(error)
           :erlang.setelement(pos, error, {conn_mod, :erlang.element(pos, error), false, {sandbox_log, []}})
@@ -359,7 +363,7 @@ defmodule CockroachDBSandbox do
     defp proxy(fun, {conn_mod, state, in_transaction?, {sandbox_log, _tx_log} = log_state}, args) do
       # Handle replay
       {state, log_state} = case sandbox_log do
-        [head | tail] when head == :replay_needed ->
+        [:replay_needed | tail] ->
           state = tail
             |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
                 {status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
@@ -379,10 +383,14 @@ defmodule CockroachDBSandbox do
           {state, log_command(fun, args, in_transaction?, log_state)}
         :error ->
           if(in_transaction?) do
-            {state, {[:error_detected] ++ elem(log_state, 0), []}}
+            log_state = case sandbox_log do
+              [:error_detected | tail] -> {elem(log_state, 0), []}
+              _ -> {[:error_detected | elem(log_state, 0)], []}
+            end
+            {state, log_state}
           else
             restart_result = restart_sandbox_tx(conn_mod, state)
-            {elem(restart_result, 2),{[:replay_needed] ++ elem(log_state, 0), []}}
+            {elem(restart_result, 2),{[:replay_needed | elem(log_state, 0)], []}}
           end
       end
 
