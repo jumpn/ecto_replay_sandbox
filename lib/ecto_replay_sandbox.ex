@@ -16,27 +16,24 @@ defmodule EctoReplaySandbox do
 
   ## Database support
 
-  While both PostgreSQL and MySQL support SQL Sandbox, only PostgreSQL
-  supports concurrent tests while running the SQL Sandbox. Therefore, do
-  not run concurrent tests with MySQL as you may run into deadlocks due to
-  its transaction implementation.
+  While this sandbox has been developped with CockroachDB in mind, it should work with other Postgresql variants.
 
   ## Example
 
   The first step is to configure your database to use the
-  `Ecto.Adapters.SQL.Sandbox` pool. You set those options in your
-  `config/config.exs` (or preferably `config/test.exs`) if you
-  haven't yet:
+  `EctoReplaySandbox` pool in your tests. You set this in your
+  `config/test.exs` if you haven't yet:
 
-      config :my_app, Repo,
-        pool: Ecto.Adapters.SQL.Sandbox
+      config :my_app, MyApp.Repo,
+        pool: EctoReplaySandbox
 
   Now with the test database properly configured, you can write
   transactional tests:
 
       # At the end of your test_helper.exs
       # Set the pool mode to manual for explicit checkouts
-      Ecto.Adapters.SQL.Sandbox.mode(Repo, :manual)
+      sandbox = Application.get_env(:my_app, Repo)[:pool]
+      sandbox.mode(Repo, :manual)
 
       defmodule PostTest do
         # Once the mode is manual, tests can also be async
@@ -44,7 +41,8 @@ defmodule EctoReplaySandbox do
 
         setup do
           # Explicitly get a connection before each test
-          :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+          sandbox = Application.get_env(:my_app, Repo)[:pool]
+          :ok = sandbox.checkout(Repo)
         end
 
         test "create post" do
@@ -67,7 +65,8 @@ defmodule EctoReplaySandbox do
 
       setup do
         # Explicitly get a connection before each test
-        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+        sandbox = Application.get_env(:my_app, Repo)[:pool]
+        :ok = sandbox.checkout(Repo)
       end
 
       test "create two posts, one sync, another async" do
@@ -98,7 +97,8 @@ defmodule EctoReplaySandbox do
       test "create two posts, one sync, another async" do
         parent = self()
         task = Task.async(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
+          sandbox = Application.get_env(:my_app, Repo)[:pool]
+          sandbox.allow(Repo, parent, self())
           Repo.insert!(%Post{title: "async"})
         end)
         assert %Post{} = Repo.insert!(%Post{title: "sync"})
@@ -123,9 +123,10 @@ defmodule EctoReplaySandbox do
 
       setup do
         # Explicitly get a connection before each test
-        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
+        sandbox = Application.get_env(:my_app, Repo)[:pool]
+        :ok = sandbox.checkout(Repo)
         # Setting the shared mode must be done only after checkout
-        Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+        sandbox.mode(Repo, {:shared, self()})
       end
 
       test "create two posts, one sync, another async" do
@@ -189,7 +190,8 @@ defmodule EctoReplaySandbox do
 
       test "gets results from GenServer" do
         {:ok, pid} = MyAppServer.start_link()
-        Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+        sandbox = Application.get_env(:my_app, Repo)[:pool]
+        sandbox.allow(Repo, self(), pid)
         assert MyAppServer.get_my_data_fast(timeout: 1000) == [...]
       end
 
@@ -205,7 +207,8 @@ defmodule EctoReplaySandbox do
 
       test "queries periodically" do
         {:ok, pid} = PeriodicServer.start_link()
-        Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), pid)
+        sandbox = Application.get_env(:my_app, Repo)[:pool]
+        sandbox.allow(Repo, self(), pid)
         # more tests
       end
 
@@ -234,7 +237,7 @@ defmodule EctoReplaySandbox do
 
   Alternately, if this is an issue for only a handful of long-running tests,
   you can pass an `:ownership_timeout` option when calling
-  `Ecto.Adapters.SQL.Sandbox.checkout/2` instead of setting a longer timeout
+  `EctoReplaySandbox.checkout/2` instead of setting a longer timeout
   globally in your config.
 
   ### Database locks and deadlocks

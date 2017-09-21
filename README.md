@@ -20,12 +20,15 @@ Once the test finishes, the managed transaction is being rollbacked to restore t
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `ecto_replay_sandbox` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `ecto_replay_sandbox` to your list of dependencies in `mix.exs`.
+Make sure to also add [Postgrex CockroachDB variant](https://hexdocs.pm/postgrex_cdb/readme.html).
 
 ```elixir
 def deps do
-  [{:ecto_replay_sandbox, "~> 1.0", only: :test}]
+  [
+    {:postgrex, "~> 0.13", hex: :postgrex_cdb, override: true},
+    {:ecto_replay_sandbox, "~> 1.0", only: :test},
+  ]
 end
 ```
 
@@ -37,7 +40,7 @@ config :my_app, MyApp.Repo,
   pool: EctoReplaySandbox
 ```
 
-Then in your `test/test_helper.ex`
+In your `test/test_helper.ex`
 
 Replace the following line:
 ```elixir
@@ -50,7 +53,37 @@ sandbox = Application.get_env(:my_app, MyApp.Repo)[:pool]
 sandbox.mode(MyApp.Repo, :manual)
 ```
 
-It effectively removes the hardcoded usage of `Ecto.Adapters.SQL.Sandbox` with a dynamic lookup of the configured pool.
+Do the same for your `test/support/xxx_case.ex` files, for example:
+Replace the following line:
+
+```elixir
+
+setup tags do
+  :ok = Ecto.Adapters.SQL.Sandbox.checkout(MyApp.Repo)
+
+  unless tags[:async] do
+    Ecto.Adapters.SQL.Sandbox.mode(MyApp.Repo, :manual)
+  end
+
+  {:ok, conn: Phoenix.ConnTest.build_conn()}
+end
+```
+
+with:
+```elixir
+setup tags do
+  sandbox = Application.get_env(:myapp, MyApp.Repo)[:pool]
+  :ok = sandbox.checkout(MyApp.Repo)
+
+  unless tags[:async] do
+    sandbox.mode(MyApp.Repo, {:shared, self()})
+  end
+
+  {:ok, conn: Phoenix.ConnTest.build_conn()}
+end
+```
+
+This effectively removes the hardcoded usage of `Ecto.Adapters.SQL.Sandbox` with a dynamic lookup of the configured pool.
 
 ## Credits
 
