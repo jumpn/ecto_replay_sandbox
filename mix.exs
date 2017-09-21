@@ -16,7 +16,7 @@ defmodule EctoReplaySandbox.Mixfile do
   end
 
   defp package do
-    [description: "Log replay based sandbox for Ecto to run your tests, compatible with CockroachDB",
+    [description: "Log replay based sandbox for Ecto, compatible with CockroachDB",
      files: ["lib", "mix.exs", "README*"],
      maintainers: ["Christian Meunier"],
      licenses: ["MIT"],
@@ -33,7 +33,7 @@ defmodule EctoReplaySandbox.Mixfile do
     [
       {:ecto, "~> 2.2"},
       {:db_connection, "~> 1.1"},
-      {:postgrex, git: "git@github.com:jumpn/postgrex.git", tag: "v1.0.0", override: true},
+      {:postgrex, git: "git@github.com:jumpn/postgrex.git", override: true},
     ]
   end
 end
