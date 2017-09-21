@@ -1,10 +1,9 @@
-defmodule CockroachDBSandboxTest do
+defmodule EctoReplaySandboxTest do
   use ExUnit.Case
 
-  #alias CockroachDBSandbox, as: Sandbox
-  alias Ecto.Adapters.SQL.Sandbox
-  alias CockroachDBSandbox.Integration.TestRepo
-  alias CockroachDBSandbox.Integration.Post
+  alias EctoReplaySandbox, as: Sandbox
+  alias EctoReplaySandbox.Integration.TestRepo
+  alias EctoReplaySandbox.Integration.Post
 
   import ExUnit.CaptureLog
 
@@ -85,22 +84,7 @@ defmodule CockroachDBSandboxTest do
     Sandbox.checkin(TestRepo)
   end
 
-  @tag :pending
-  test "disconnects sandbox on transaction timeouts" do
-    Sandbox.checkout(TestRepo)
-
-    assert capture_log(fn ->
-      catch_error(
-        TestRepo.transaction fn ->
-          :timer.sleep(1000)
-        end, timeout: 0
-      )
-    end) =~ "timed out"
-
-    Sandbox.checkin(TestRepo)
-  end
-
-  test "runs inside a sandbox even with failed queries" do
+  test "works even with failed queries" do
     Sandbox.checkout(TestRepo)
 
     {:ok, _}    = TestRepo.insert(%Post{}, skip_transaction: true)
@@ -112,7 +96,7 @@ defmodule CockroachDBSandboxTest do
     Sandbox.checkin(TestRepo)
   end
 
-  test "works inside failed transaction is rollbacked" do
+  test "the failed transaction is properly rollbacked" do
     Sandbox.checkout(TestRepo)
 
     TestRepo.transaction fn ->
@@ -138,16 +122,34 @@ defmodule CockroachDBSandboxTest do
     Sandbox.checkin(TestRepo)
   end
 
-  test "work inside failed transaction is rollbacked" do
+  test "sanbox still works once a transaction with a failed changeset is rollbacked" do
     Sandbox.checkout(TestRepo)
 
-    {:ok, _}    = TestRepo.insert(%Post{}, skip_transaction: true)
+    {:ok, _} = TestRepo.insert(%Post{id: 1}, skip_transaction: true)
+
     TestRepo.transaction fn ->
-      TestRepo.insert(%Post{})
-      # This is a failed query to trigger a rollback
-      {:error, _} = TestRepo.query("INVALID")
+      %Post{}
+      |> Post.changeset(%{id: 1})
+      |> TestRepo.insert
     end
-    assert 1 == TestRepo.all(Post) |> Enum.count
+
+    TestRepo.all(Post)
+
+    Sandbox.checkin(TestRepo)
+  end
+
+  test "sanbox replays log in correct order" do
+    Sandbox.checkout(TestRepo)
+
+    {:ok, _post} = TestRepo.insert(%Post{}, skip_transaction: true)
+    TestRepo.update_all(Post, set: [title: "New title"])
+    TestRepo.update_all(Post, set: [title: "New title2"])
+
+    # This is a failed query but it should not taint the sandbox transaction
+    {:error, _} = TestRepo.query("INVALID")
+
+    assert [post] = TestRepo.all(Post)
+    assert post.title == "New title2"
 
     Sandbox.checkin(TestRepo)
   end

@@ -1,10 +1,10 @@
-# CockroachDBSandbox
+# EctoReplaySandbox
 
-This is an override of Ecto.Adapters.SQL.Sandbox designed to work for CockroachDB by not leveraging savepoints.
-Each test runs inside a transaction managed by the Sandbox, just like with regular Ecto Sandbox.
+This is a custom implementation of Ecto.Adapters.SQL.Sandbox designed to work with CockroachDB by not leveraging savepoints.
+Each test runs inside a transaction managed by the Sandbox, just like with default Ecto Sandbox.
 
 Inside your test, when your code opens a transaction block, given that CockroachDB does not support nested transactions or savepoints, no actual database transaction is created.
-Instead the Sandbox is using a log approach described below and such transaction are called pseudo transaction.
+Instead the sandbox is using a log approach described below and such transaction are called pseudo transaction.
 
 The sandbox maintains 2 logs for a given managed transaction:
 - Sandbox log
@@ -21,15 +21,36 @@ Once the test finishes, the managed transaction is being rollbacked to restore t
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `cockroachdb_sandbox` to your list of dependencies in `mix.exs`:
+by adding `ecto_replay_sandbox` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
-  [{:cockroachdb_sandbox, "~> 0.1.0", only: :test}]
+  [{:ecto_replay_sandbox, "~> 1.0.0", only: :test}]
 end
 ```
 
-> You need to declare this dependency after Ecto in order to make sure that we override the default Ecto Sandbox.
+## Usage
+
+In your `config/test.ex`
+```elixir
+config :my_app, MyApp.Repo,
+  pool: EctoReplaySandbox
+```
+
+Then in your `test/test_helper.ex`
+
+Replace the following line:
+```elixir
+Ecto.Adapters.SQL.Sandbox.mode(MyApp.Repo, :manual)
+```
+
+with:
+```elixir
+sandbox = Application.get_env(:my_app, MyApp.Repo)[:pool]
+sandbox.mode(MyApp.Repo, :manual)
+```
+
+It effectively removes the hardcoded usage of `Ecto.Adapters.SQL.Sandbox` with a dynamic lookup of the configured pool.
 
 ## Credits
 

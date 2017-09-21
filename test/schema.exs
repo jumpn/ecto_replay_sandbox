@@ -1,4 +1,4 @@
-defmodule CockroachDBSandbox.Integration.Schema do
+defmodule EctoReplaySandbox.Integration.Schema do
   defmacro __using__(_) do
     quote do
       use Ecto.Schema
@@ -13,7 +13,7 @@ defmodule CockroachDBSandbox.Integration.Schema do
   end
 end
 
-defmodule CockroachDBSandbox.Integration.User do
+defmodule EctoReplaySandbox.Integration.User do
   @moduledoc """
   This module is used to test:
 
@@ -21,17 +21,17 @@ defmodule CockroachDBSandbox.Integration.User do
     * Relationships
 
   """
-  use CockroachDBSandbox.Integration.Schema
+  use EctoReplaySandbox.Integration.Schema
 
   schema "users" do
     field :name, :string
-    has_many :comments, CockroachDBSandbox.Integration.Comment, foreign_key: :author_id, on_delete: :nilify_all, on_replace: :nilify
-    has_many :posts, CockroachDBSandbox.Integration.Post, foreign_key: :author_id, on_delete: :nothing, on_replace: :delete
+    has_many :comments, EctoReplaySandbox.Integration.Comment, foreign_key: :author_id, on_delete: :nilify_all, on_replace: :nilify
+    has_many :posts, EctoReplaySandbox.Integration.Post, foreign_key: :author_id, on_delete: :nothing, on_replace: :delete
     timestamps(type: :utc_datetime)
   end
 end
 
-defmodule CockroachDBSandbox.Integration.Post do
+defmodule EctoReplaySandbox.Integration.Post do
   @moduledoc """
   This module is used to test:
 
@@ -42,7 +42,7 @@ defmodule CockroachDBSandbox.Integration.Post do
     * Dependent callbacks
 
   """
-  use CockroachDBSandbox.Integration.Schema
+  use EctoReplaySandbox.Integration.Schema
   import Ecto.Changeset
 
   schema "posts" do
@@ -55,8 +55,8 @@ defmodule CockroachDBSandbox.Integration.Post do
     field :visits, :integer
     field :intensity, :float
     field :posted, :date
-    has_many :comments, CockroachDBSandbox.Integration.Comment, on_delete: :delete_all, on_replace: :delete
-    belongs_to :author, CockroachDBSandbox.Integration.User
+    has_many :comments, EctoReplaySandbox.Integration.Comment, on_delete: :delete_all, on_replace: :delete
+    belongs_to :author, EctoReplaySandbox.Integration.User
     timestamps()
   end
 
@@ -66,7 +66,7 @@ defmodule CockroachDBSandbox.Integration.Post do
   end
 end
 
-defmodule CockroachDBSandbox.Integration.Comment do
+defmodule EctoReplaySandbox.Integration.Comment do
   @moduledoc """
   This module is used to test:
 
@@ -74,12 +74,12 @@ defmodule CockroachDBSandbox.Integration.Comment do
     * Dependent callbacks
 
   """
-  use CockroachDBSandbox.Integration.Schema
+  use EctoReplaySandbox.Integration.Schema
 
   schema "comments" do
     field :text, :string
-    belongs_to :post, CockroachDBSandbox.Integration.Post
-    belongs_to :author, CockroachDBSandbox.Integration.User
+    belongs_to :post, EctoReplaySandbox.Integration.Post
+    belongs_to :author, EctoReplaySandbox.Integration.User
   end
 
   def changeset(schema, params) do

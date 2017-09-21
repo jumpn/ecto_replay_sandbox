@@ -1,4 +1,4 @@
-defmodule Ecto.Adapters.SQL.Sandbox do
+defmodule EctoReplaySandbox do
   @moduledoc ~S"""
   A pool for concurrent transactional tests.
 
@@ -322,7 +322,7 @@ defmodule Ecto.Adapters.SQL.Sandbox do
       {state, sandbox_log} = case sandbox_log do
         [:error_detected | tail] -> 
           restart_result = restart_sandbox_tx(conn_mod, state)
-          {elem(restart_result, 2),[:replay_needed] ++ tail}
+          {elem(restart_result, 2),[:replay_needed | tail]}
         _ ->
           {state, sandbox_log ++ tx_log}
       end
@@ -330,9 +330,13 @@ defmodule Ecto.Adapters.SQL.Sandbox do
       {:ok, @commit_result, {conn_mod, state, false, {sandbox_log, []}}}
     end
     def handle_rollback(opts, {conn_mod, state, true, {sandbox_log, _}}) do
+      sandbox_log = case sandbox_log do
+        [:error_detected | tail] -> tail
+        _ -> sandbox_log
+      end
       case restart_sandbox_tx(conn_mod, state, opts) do
         {:ok, _, conn_state} ->
-          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed] ++ sandbox_log, []}}}
+          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed | sandbox_log], []}}}
         error -> 
           pos = :erlang.tuple_size(error)
           :erlang.setelement(pos, error, {conn_mod, :erlang.element(pos, error), false, {sandbox_log, []}})
@@ -359,10 +363,10 @@ defmodule Ecto.Adapters.SQL.Sandbox do
     defp proxy(fun, {conn_mod, state, in_transaction?, {sandbox_log, _tx_log} = log_state}, args) do
       # Handle replay
       {state, log_state} = case sandbox_log do
-        [head | tail] when head == :replay_needed ->
+        [:replay_needed | tail] ->
           state = tail
             |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
-                {status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
+                {_status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
                 state
               end)
           {state, {tail, []}}
@@ -379,10 +383,14 @@ defmodule Ecto.Adapters.SQL.Sandbox do
           {state, log_command(fun, args, in_transaction?, log_state)}
         :error ->
           if(in_transaction?) do
-            {state, {[:error_detected] ++ elem(log_state, 0), []}}
+            log_state = case sandbox_log do
+              [:error_detected | _tail] -> {elem(log_state, 0), []}
+              _ -> {[:error_detected | elem(log_state, 0)], []}
+            end
+            {state, log_state}
           else
             restart_result = restart_sandbox_tx(conn_mod, state)
-            {elem(restart_result, 2),{[:replay_needed] ++ elem(log_state, 0), []}}
+            {elem(restart_result, 2),{[:replay_needed | elem(log_state, 0)], []}}
           end
       end
 
@@ -472,7 +480,7 @@ defmodule Ecto.Adapters.SQL.Sandbox do
   def mode(repo, mode)
       when mode in [:auto, :manual]
       when elem(mode, 0) == :shared and is_pid(elem(mode, 1)) do
-    {name, opts} = repo.__pool__
+    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
 
     if opts[:pool] != DBConnection.Ownership do
       raise """
@@ -513,11 +521,11 @@ defmodule Ecto.Adapters.SQL.Sandbox do
       15000 ms if not set.
   """
   def checkout(repo, opts \\ []) do
-    {name, pool_opts} =
+    {_repo_mod, name, pool_opts} =
       if Keyword.get(opts, :sandbox, true) do
         proxy_pool(repo)
       else
-        repo.__pool__
+        Ecto.Registry.lookup(repo)
       end
 
     pool_opts_overrides = Keyword.take(opts, [:ownership_timeout])
@@ -549,7 +557,7 @@ defmodule Ecto.Adapters.SQL.Sandbox do
   Checks in the connection back into the sandbox pool.
   """
   def checkin(repo, _opts \\ []) do
-    {name, opts} = repo.__pool__
+    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
     DBConnection.Ownership.ownership_checkin(name, opts)
   end
 
@@ -557,13 +565,34 @@ defmodule Ecto.Adapters.SQL.Sandbox do
   Allows the `allow` process to use the same connection as `parent`.
   """
   def allow(repo, parent, allow, _opts \\ []) do
-    {name, opts} = repo.__pool__
+    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
     DBConnection.Ownership.ownership_allow(name, parent, allow, opts)
   end
 
+  def ensure_all_started(app, type \\ :temporary) do
+    DBConnection.Ownership.ensure_all_started(app, type)
+  end
+
+  def child_spec(module, opts, child_opts) do
+    DBConnection.Ownership.child_spec(module, opts, child_opts)
+  end
+
+  @doc """
+  Runs a function outside of the sandbox.
+  """
+  def unboxed_run(repo, fun) do
+    checkin(repo)
+    checkout(repo, sandbox: false)
+    try do
+      fun.()
+    after
+      checkin(repo)
+    end
+  end
+
   defp proxy_pool(repo) do
-    {name, opts} = repo.__pool__
+    {repo_mod, name, opts} = Ecto.Registry.lookup(repo)
     {pool, opts} = Keyword.pop(opts, :ownership_pool, DBConnection.Poolboy)
-    {name, [repo: repo, sandbox_pool: pool, ownership_pool: Pool] ++ opts}
+    {repo_mod, name, [repo: repo, sandbox_pool: pool, ownership_pool: Pool] ++ opts}
   end
 end

@@ -9,9 +9,8 @@ Application.put_env(:ecto, :lock_for_update, "FOR UPDATE")
 Application.put_env(:ecto, :primary_key_type, :id)
 
 # Configure CockroachDB connection
-Application.put_env(:cockroachdb_sandbox, :cdb_test_url,
+Application.put_env(:ecto_replay_sandbox, :cdb_test_url,
   "ecto://" <> (System.get_env("CDB_URL") || "root@localhost:26257")
-  #"ecto://" <> (System.get_env("CDB_URL") || "postgres@localhost:5432")
 )
 
 # Load support files
@@ -26,16 +25,16 @@ pool =
   end
 
 # Pool repo for async, safe tests
-alias CockroachDBSandbox.Integration.TestRepo
+alias EctoReplaySandbox.Integration.TestRepo
 
-Application.put_env(:cockroachdb_sandbox, TestRepo,
+Application.put_env(:ecto_replay_sandbox, TestRepo,
   adapter: Ecto.Adapters.Postgres,
-  url: Application.get_env(:cockroachdb_sandbox, :cdb_test_url) <> "/cockroachdb_sandbox_test",
-  pool: Ecto.Adapters.SQL.Sandbox,
+  url: Application.get_env(:ecto_replay_sandbox, :cdb_test_url) <> "/ecto_replay_sandbox_test",
+  pool: EctoReplaySandbox,
   ownership_pool: pool)
 
-defmodule CockroachDBSandbox.Integration.TestRepo do
-  use CockroachDBSandbox.Integration.Repo, otp_app: :cockroachdb_sandbox
+defmodule EctoReplaySandbox.Integration.TestRepo do
+  use EctoReplaySandbox.Integration.Repo, otp_app: :ecto_replay_sandbox
 end
 
 {:ok, _} = Ecto.Adapters.Postgres.ensure_all_started(TestRepo, :temporary)
@@ -46,6 +45,6 @@ _   = Ecto.Adapters.Postgres.storage_down(TestRepo.config)
 
 {:ok, _pid} = TestRepo.start_link
 
-:ok = Ecto.Migrator.up(TestRepo, 0, CockroachDBSandbox.Integration.Migration, log: false)
-Ecto.Adapters.SQL.Sandbox.mode(TestRepo, :manual)
+:ok = Ecto.Migrator.up(TestRepo, 0, EctoReplaySandbox.Integration.Migration, log: false)
+EctoReplaySandbox.mode(TestRepo, :manual)
 Process.flag(:trap_exit, true)
