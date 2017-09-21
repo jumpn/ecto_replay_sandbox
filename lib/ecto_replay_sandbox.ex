@@ -1,4 +1,4 @@
-defmodule CockroachDBSandbox do
+defmodule EctoReplaySandbox do
   @moduledoc ~S"""
   A pool for concurrent transactional tests.
 
@@ -366,7 +366,7 @@ defmodule CockroachDBSandbox do
         [:replay_needed | tail] ->
           state = tail
             |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
-                {status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
+                {_status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
                 state
               end)
           {state, {tail, []}}
@@ -384,7 +384,7 @@ defmodule CockroachDBSandbox do
         :error ->
           if(in_transaction?) do
             log_state = case sandbox_log do
-              [:error_detected | tail] -> {elem(log_state, 0), []}
+              [:error_detected | _tail] -> {elem(log_state, 0), []}
               _ -> {[:error_detected | elem(log_state, 0)], []}
             end
             {state, log_state}

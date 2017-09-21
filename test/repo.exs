@@ -1,10 +1,10 @@
-defmodule CockroachDBSandbox.Integration.Repo do
+defmodule EctoReplaySandbox.Integration.Repo do
   defmacro __using__(opts) do
     quote do
-      config = Application.get_env(:cockroachdb_sandbox, __MODULE__)
+      config = Application.get_env(:ecto_replay_sandbox, __MODULE__)
       config = Keyword.put(config, :loggers, [Ecto.LogEntry,
-                                              {CockroachDBSandbox.Integration.Repo, :log, [:on_log]}])
-      Application.put_env(:cockroachdb_sandbox, __MODULE__, config)
+                                              {EctoReplaySandbox.Integration.Repo, :log, [:on_log]}])
+      Application.put_env(:ecto_replay_sandbox, __MODULE__, config)
       use Ecto.Repo, unquote(opts)
     end
   end

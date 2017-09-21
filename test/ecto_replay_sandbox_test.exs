@@ -1,9 +1,9 @@
-defmodule CockroachDBSandboxTest do
+defmodule EctoReplaySandboxTest do
   use ExUnit.Case
 
-  alias CockroachDBSandbox, as: Sandbox
-  alias CockroachDBSandbox.Integration.TestRepo
-  alias CockroachDBSandbox.Integration.Post
+  alias EctoReplaySandbox, as: Sandbox
+  alias EctoReplaySandbox.Integration.TestRepo
+  alias EctoReplaySandbox.Integration.Post
 
   import ExUnit.CaptureLog
 
@@ -141,7 +141,7 @@ defmodule CockroachDBSandboxTest do
   test "sanbox replays log in correct order" do
     Sandbox.checkout(TestRepo)
 
-    {:ok, post} = TestRepo.insert(%Post{}, skip_transaction: true)
+    {:ok, _post} = TestRepo.insert(%Post{}, skip_transaction: true)
     TestRepo.update_all(Post, set: [title: "New title"])
     TestRepo.update_all(Post, set: [title: "New title2"])
 

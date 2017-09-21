@@ -1,4 +1,4 @@
-defmodule CockroachDBSandbox.Integration.Migration do
+defmodule EctoReplaySandbox.Integration.Migration do
   use Ecto.Migration
 
   def change do
