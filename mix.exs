@@ -33,7 +33,7 @@ defmodule EctoReplaySandbox.Mixfile do
     [
       {:ecto, "~> 2.2"},
       {:db_connection, "~> 1.1"},
-      {:postgrex, git: "git@github.com:jumpn/postgrex.git", override: true},
+      {:postgrex, "~> 0.13", hex: :postgrex_cdb, override: true},
     ]
   end
 end

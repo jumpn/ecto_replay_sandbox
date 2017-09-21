@@ -25,7 +25,7 @@ by adding `ecto_replay_sandbox` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
-  [{:ecto_replay_sandbox, "~> 1.0.0", only: :test}]
+  [{:ecto_replay_sandbox, "~> 1.0", only: :test}]
 end
 ```
 
