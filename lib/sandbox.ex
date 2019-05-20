@@ -295,11 +295,29 @@ defmodule EctoReplaySandbox do
   you can always disable the test triggering the deadlock from
   running asynchronously by setting  "async: false".
   """
-  
+
   defmodule Connection do
-    @begin_result %Postgrex.Result{columns: nil, command: :begin, connection_id: nil, num_rows: nil, rows: nil}
-    @commit_result %Postgrex.Result{columns: nil, command: :commit, connection_id: nil, num_rows: nil, rows: nil}
-    @rollback_result %Postgrex.Result{columns: nil, command: :rollback, connection_id: nil, num_rows: nil, rows: nil}
+    @begin_result %Postgrex.Result{
+      columns: nil,
+      command: :begin,
+      connection_id: nil,
+      num_rows: nil,
+      rows: nil
+    }
+    @commit_result %Postgrex.Result{
+      columns: nil,
+      command: :commit,
+      connection_id: nil,
+      num_rows: nil,
+      rows: nil
+    }
+    @rollback_result %Postgrex.Result{
+      columns: nil,
+      command: :rollback,
+      connection_id: nil,
+      num_rows: nil,
+      rows: nil
+    }
 
     @moduledoc false
     if Code.ensure_loaded?(DBConnection) do
@@ -310,7 +328,7 @@ defmodule EctoReplaySandbox do
       raise "should never be invoked"
     end
 
-    def disconnect(err, {conn_mod, state, _in_transaction?, _fixture_state}) do
+    def disconnect(err, {conn_mod, state, _in_transaction?}) do
       conn_mod.disconnect(err, state)
     end
 
@@ -321,187 +339,162 @@ defmodule EctoReplaySandbox do
     def handle_begin(_opts, {conn_mod, state, false, {sandbox_log, _tx_log}}) do
       {:ok, @begin_result, {conn_mod, state, true, {sandbox_log, []}}}
     end
+
     def handle_commit(_opts, {conn_mod, state, true, {sandbox_log, tx_log}}) do
-      {state, sandbox_log} = case sandbox_log do
-        [:error_detected | tail] -> 
-          restart_result = restart_sandbox_tx(conn_mod, state)
-          {elem(restart_result, 2),[:replay_needed | tail]}
-        _ ->
-          {state, sandbox_log ++ tx_log}
-      end
- 
+      {state, sandbox_log} =
+        case sandbox_log do
+          [:error_detected | tail] ->
+            restart_result = restart_sandbox_tx(conn_mod, state)
+            {elem(restart_result, 2), [:replay_needed | tail]}
+
+          _ ->
+            {state, sandbox_log ++ tx_log}
+        end
+
       {:ok, @commit_result, {conn_mod, state, false, {sandbox_log, []}}}
     end
+
     def handle_rollback(opts, {conn_mod, state, true, {sandbox_log, _}}) do
-      sandbox_log = case sandbox_log do
-        [:error_detected | tail] -> tail
-        _ -> sandbox_log
-      end
+      sandbox_log =
+        case sandbox_log do
+          [:error_detected | tail] -> tail
+          _ -> sandbox_log
+        end
+
       case restart_sandbox_tx(conn_mod, state, opts) do
         {:ok, _, conn_state} ->
-          {:ok, @rollback_result, {conn_mod, conn_state, false, {[:replay_needed | sandbox_log], []}}}
-        error -> 
+          {:ok, @rollback_result,
+           {conn_mod, conn_state, false, {[:replay_needed | sandbox_log], []}}}
+
+        error ->
           pos = :erlang.tuple_size(error)
-          :erlang.setelement(pos, error, {conn_mod, :erlang.element(pos, error), false, {sandbox_log, []}})
+
+          :erlang.setelement(
+            pos,
+            error,
+            {conn_mod, :erlang.element(pos, error), false, {sandbox_log, []}}
+          )
       end
     end
+
+    def handle_status(opts, state),
+      do: proxy(:handle_status, state, [opts])
 
     def handle_prepare(query, opts, state),
       do: proxy(:handle_prepare, state, [query, opts])
+
     def handle_execute(query, params, opts, state),
       do: proxy(:handle_execute, state, [query, params, opts])
+
     def handle_close(query, opts, state),
       do: proxy(:handle_close, state, [query, opts])
+
     def handle_declare(query, params, opts, state),
       do: proxy(:handle_declare, state, [query, params, opts])
-    def handle_first(query, cursor, opts, state),
-      do: proxy(:handle_first, state, [query, cursor, opts])
-    def handle_next(query, cursor, opts, state),
-      do: proxy(:handle_next, state, [query, cursor, opts])
+
+    def handle_fetch(query, cursor, opts, state),
+      do: proxy(:handle_fetch, state, [query, cursor, opts])
+
     def handle_deallocate(query, cursor, opts, state),
       do: proxy(:handle_deallocate, state, [query, cursor, opts])
-    def handle_info(msg, state),
-      do: proxy(:handle_info, state, [msg])
 
     defp proxy(fun, {conn_mod, state, in_transaction?, {sandbox_log, _tx_log} = log_state}, args) do
       # Handle replay
-      {state, log_state} = case sandbox_log do
-        [:replay_needed | tail] ->
-          state = tail
-            |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
-                {_status, _, state} = apply(conn_mod, replay_fun, replay_args ++ [state])
+      {state, log_state} =
+        case sandbox_log do
+          [:replay_needed | tail] ->
+            state =
+              tail
+              |> Enum.reduce(state, fn {replay_fun, replay_args}, state ->
+                {:ok, _, state} =
+                  apply(conn_mod, replay_fun, replay_args ++ [state]) |> normalize_result
+
                 state
               end)
-          {state, {tail, []}}
-        _ ->
-          {state, log_state}
-      end
+
+            {state, {tail, []}}
+
+          _ ->
+            {state, log_state}
+        end
 
       # Execute command
-      {status, result, state} = apply(conn_mod, fun, args ++ [state])
+      {status, result, state} = apply(conn_mod, fun, args ++ [state]) |> normalize_result
 
       # Handle error
-      {state, log_state} = case status do
-        :ok ->
-          {state, log_command(fun, args, in_transaction?, log_state)}
-        :error ->
-          if(in_transaction?) do
-            log_state = case sandbox_log do
-              [:error_detected | _tail] -> {elem(log_state, 0), []}
-              _ -> {[:error_detected | elem(log_state, 0)], []}
-            end
-            {state, log_state}
-          else
-            restart_result = restart_sandbox_tx(conn_mod, state)
-            {elem(restart_result, 2),{[:replay_needed | elem(log_state, 0)], []}}
-          end
-      end
+      {state, log_state} =
+        case status do
+          ok_val when ok_val in [:ok, :cont, :halt] ->
+            {state, log_command(fun, args, in_transaction?, log_state)}
 
-      {status, result, {conn_mod, state, in_transaction?, log_state}}
+          error_val when error_val in [:error, :disconnect] ->
+            if(in_transaction?) do
+              log_state =
+                case sandbox_log do
+                  [:error_detected | _tail] -> {elem(log_state, 0), []}
+                  _ -> {[:error_detected | elem(log_state, 0)], []}
+                end
+
+              {state, log_state}
+            else
+              {_status, _result, state} = restart_sandbox_tx(conn_mod, state)
+              {state, {[:replay_needed | elem(log_state, 0)], []}}
+            end
+        end
+
+      put_elem(result, tuple_size(result) - 1, {conn_mod, state, in_transaction?, log_state})
+    end
+
+    defp normalize_result(result) do
+      status = elem(result, 0)
+      state = elem(result, tuple_size(result) - 1)
+      {status, result, state}
     end
 
     defp log_command(fun, args, in_transactions?, {sandbox_log, tx_log}) do
       case fun do
-        command when command in [:handle_execute, :handle_close, :handle_declare, :handle_first, :handle_next, :handle_deallocate] ->
+        command
+        when command in [
+               :handle_execute,
+               :handle_close,
+               :handle_declare,
+               :handle_fetch,
+               :handle_deallocate
+             ] ->
           if in_transactions? do
             {sandbox_log, tx_log ++ [{fun, args}]}
           else
             {sandbox_log ++ [{fun, args}], []}
           end
+
         _ ->
           {sandbox_log, tx_log}
       end
     end
 
     defp restart_sandbox_tx(conn_mod, conn_state, opts \\ []) do
-      with {:ok, _, conn_state} <- conn_mod.handle_rollback([mode: :transaction] ++ opts, conn_state),
+      with {:ok, _, conn_state} <-
+             conn_mod.handle_rollback([mode: :transaction] ++ opts, conn_state),
            {:ok, _, _} = begin_result <- conn_mod.handle_begin([mode: :transaction], conn_state) do
         begin_result
       end
-    end
-
-  end
-
-  defmodule Pool do
-    @moduledoc false
-    if Code.ensure_loaded?(DBConnection) do
-      @behaviour DBConnection.Pool
-    end
-
-    def ensure_all_started(_opts, _type) do
-      raise "should never be invoked"
-    end
-
-    def start_link(_module, _opts) do
-      raise "should never be invoked"
-    end
-
-    def child_spec(_module, _opts, _child_opts) do
-      raise "should never be invoked"
-    end
-
-    def checkout(pool, opts) do
-      pool_mod = opts[:sandbox_pool]
-
-      case pool_mod.checkout(pool, opts) do
-        {:ok, pool_ref, conn_mod, conn_state} ->
-          case conn_mod.handle_begin([mode: :transaction] ++ opts, conn_state) do
-            {:ok, _, conn_state} ->
-              {:ok, pool_ref, Connection, {conn_mod, conn_state, false, {[], []}}}
-            {_error_or_disconnect, err, conn_state} ->
-              pool_mod.disconnect(pool_ref, err, conn_state, opts)
-          end
-        error ->
-          error
-      end
-    end
-
-    def checkin(pool_ref, {conn_mod, conn_state, _in_transaction?, _log_state}, opts) do
-      pool_mod = opts[:sandbox_pool]
-      case conn_mod.handle_rollback([mode: :transaction] ++ opts, conn_state) do
-        {:ok, _, conn_state} ->
-          pool_mod.checkin(pool_ref, conn_state, opts)
-        {_error_or_disconnect, err, conn_state} ->
-          pool_mod.disconnect(pool_ref, err, conn_state, opts)
-      end
-    end
-
-    def disconnect(owner, exception, {_conn_mod, conn_state, _in_transaction?, _log_state}, opts) do
-      opts[:sandbox_pool].disconnect(owner, exception, conn_state, opts)
-    end
-
-    def stop(owner, reason, {_conn_mod, conn_state, _in_transaction?, _log_state}, opts) do
-      opts[:sandbox_pool].stop(owner, reason, conn_state, opts)
     end
   end
 
   @doc """
   Sets the mode for the `repo` pool.
 
-  The mode can be `:auto`, `:manual` or `:shared`.
+  The mode can be `:auto`, `:manual` or `{:shared, <pid>}`.
+
+  Warning: you should only call this function in the setup block for a test and
+  not within a test, because if the mode is changed during the test it will cause
+  other database connections to be checked in (causing errors).
   """
   def mode(repo, mode)
-      when mode in [:auto, :manual]
-      when elem(mode, 0) == :shared and is_pid(elem(mode, 1)) do
-    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
-
-    if opts[:pool] != DBConnection.Ownership do
-      raise """
-      cannot configure sandbox with pool #{inspect opts[:pool]}.
-      To use the SQL Sandbox, configure your repository pool as:
-
-            pool: #{inspect __MODULE__}
-      """
-    end
-
-    # If the mode is set to anything but shared, let's
-    # automatically checkin the current connection to
-    # force it to act according to the chosen mode.
-    if mode in [:auto, :manual] do
-      checkin(repo, [])
-    end
-
-    DBConnection.Ownership.ownership_mode(name, mode, opts)
+      when is_atom(repo) and mode in [:auto, :manual]
+      when is_atom(repo) and elem(mode, 0) == :shared and is_pid(elem(mode, 1)) do
+    %{pid: pool, opts: opts} = lookup_meta!(repo)
+    DBConnection.Ownership.ownership_mode(pool, mode, opts)
   end
 
   @doc """
@@ -516,30 +509,40 @@ defmodule EctoReplaySandbox do
     * `:sandbox` - when true the connection is wrapped in
       a transaction. Defaults to true.
 
-    * `:isolation` - set the query to the given isolation level
+    * `:isolation` - set the query to the given isolation level.
 
     * `:ownership_timeout` - limits how long the connection can be
-      owned. Defaults to the compiled value from your repo config in
+      owned. Defaults to the value in your repo config in
       `config/config.exs` (or preferably in `config/test.exs`), or
-      15000 ms if not set.
+      60000 ms if not set. The timeout exists for sanity checking
+      purposes, to ensure there is no connection leakage, and can
+      be bumped whenever necessary.
+
   """
-  def checkout(repo, opts \\ []) do
-    {_repo_mod, name, pool_opts} =
+  def checkout(repo, opts \\ []) when is_atom(repo) do
+    %{pid: pool, opts: pool_opts} = lookup_meta!(repo)
+
+    pool_opts =
       if Keyword.get(opts, :sandbox, true) do
-        proxy_pool(repo)
+        [
+          post_checkout: &post_checkout(&1, &2, opts),
+          pre_checkin: &pre_checkin(&1, &2, &3, opts)
+        ] ++ pool_opts
       else
-        Ecto.Registry.lookup(repo)
+        pool_opts
       end
 
     pool_opts_overrides = Keyword.take(opts, [:ownership_timeout])
     pool_opts = Keyword.merge(pool_opts, pool_opts_overrides)
 
-    case DBConnection.Ownership.ownership_checkout(name, pool_opts) do
+    case DBConnection.Ownership.ownership_checkout(pool, pool_opts) do
       :ok ->
         if isolation = opts[:isolation] do
           set_transaction_isolation_level(repo, isolation)
         end
+
         :ok
+
       other ->
         other
     end
@@ -547,9 +550,11 @@ defmodule EctoReplaySandbox do
 
   defp set_transaction_isolation_level(repo, isolation) do
     query = "SET TRANSACTION ISOLATION LEVEL #{isolation}"
+
     case Ecto.Adapters.SQL.query(repo, query, [], sandbox_subtransaction: false) do
       {:ok, _} ->
         :ok
+
       {:error, error} ->
         checkin(repo, [])
         raise error
@@ -559,33 +564,26 @@ defmodule EctoReplaySandbox do
   @doc """
   Checks in the connection back into the sandbox pool.
   """
-  def checkin(repo, _opts \\ []) do
-    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
-    DBConnection.Ownership.ownership_checkin(name, opts)
+  def checkin(repo, _opts \\ []) when is_atom(repo) do
+    %{pid: pool, opts: opts} = lookup_meta!(repo)
+    DBConnection.Ownership.ownership_checkin(pool, opts)
   end
 
   @doc """
   Allows the `allow` process to use the same connection as `parent`.
   """
-  def allow(repo, parent, allow, _opts \\ []) do
-    {_repo_mod, name, opts} = Ecto.Registry.lookup(repo)
-    DBConnection.Ownership.ownership_allow(name, parent, allow, opts)
-  end
-
-  def ensure_all_started(app, type \\ :temporary) do
-    DBConnection.Ownership.ensure_all_started(app, type)
-  end
-
-  def child_spec(module, opts, child_opts) do
-    DBConnection.Ownership.child_spec(module, opts, child_opts)
+  def allow(repo, parent, allow, _opts \\ []) when is_atom(repo) do
+    %{pid: pool, opts: opts} = lookup_meta!(repo)
+    DBConnection.Ownership.ownership_allow(pool, parent, allow, opts)
   end
 
   @doc """
   Runs a function outside of the sandbox.
   """
-  def unboxed_run(repo, fun) do
+  def unboxed_run(repo, fun) when is_atom(repo) do
     checkin(repo)
     checkout(repo, sandbox: false)
+
     try do
       fun.()
     after
@@ -593,9 +591,63 @@ defmodule EctoReplaySandbox do
     end
   end
 
-  defp proxy_pool(repo) do
-    {repo_mod, name, opts} = Ecto.Registry.lookup(repo)
-    {pool, opts} = Keyword.pop(opts, :ownership_pool, DBConnection.Poolboy)
-    {repo_mod, name, [repo: repo, sandbox_pool: pool, ownership_pool: Pool] ++ opts}
+  defp lookup_meta!(repo) do
+    %{opts: opts} = meta = Ecto.Adapter.lookup_meta(repo)
+
+    if opts[:pool] != DBConnection.Ownership do
+      raise """
+      cannot invoke sandbox operation with pool #{inspect(opts[:pool])}.
+      To use the SQL Sandbox, configure your repository pool as:
+
+          pool: #{inspect(__MODULE__)}
+      """
+    end
+
+    meta
+  end
+
+  defp post_checkout(conn_mod, conn_state, opts) do
+    case conn_mod.handle_begin([mode: :transaction] ++ opts, conn_state) do
+      {:ok, _, conn_state} ->
+        {:ok, Connection, {conn_mod, conn_state, false, {[], []}}}
+
+      {_error_or_disconnect, err, conn_state} ->
+        {:disconnect, err, conn_mod, conn_state}
+    end
+  end
+
+  defp pre_checkin(
+         :checkin,
+         Connection,
+         {conn_mod, conn_state, _in_transaction?, _log_state},
+         opts
+       ) do
+    case conn_mod.handle_rollback([mode: :transaction] ++ opts, conn_state) do
+      {:ok, _, conn_state} ->
+        {:ok, conn_mod, conn_state}
+
+      {:idle, _conn_state} ->
+        raise """
+        Ecto SQL sandbox transaction was already committed/rolled back.
+
+        The sandbox works by running each test in a transaction and closing the\
+        transaction afterwards. However, the transaction has already terminated.\
+        Your test code is likely committing or rolling back transactions manually,\
+        either by invoking procedures or running custom SQL commands.
+
+        One option is to manually checkout a connection without a sandbox:
+
+            Ecto.Adapters.SQL.Sandbox.checkout(repo, sandbox: false)
+
+        But remember you will have to undo any database changes performed by such tests.
+        """
+
+      {_error_or_disconnect, err, conn_state} ->
+        {:disconnect, err, conn_mod, conn_state}
+    end
+  end
+
+  defp pre_checkin(_, Connection, {conn_mod, conn_state, _in_transaction?, _log_state}, _opts) do
+    {:ok, conn_mod, conn_state}
   end
 end

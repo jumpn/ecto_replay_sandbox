@@ -1,13 +1,13 @@
 defmodule EctoReplaySandbox.Mixfile do
   use Mix.Project
 
-  @version "1.0.0"
+  @version "2.0.0"
 
   def project do
     [
       app: :ecto_replay_sandbox,
       version: @version,
-      elixir: "~> 1.4",
+      elixir: "~> 1.5",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
       package: package(),
@@ -35,11 +35,12 @@ defmodule EctoReplaySandbox.Mixfile do
 
   defp deps do
     [
-      {:ex_doc, ">= 0.0.0", only: :dev},
-      {:ecto, "~> 2.2"},
-      {:db_connection, "~> 1.1"},
-      # {:postgrex, "~> 0.13"},
-      {:postgrex, "~> 0.14.0-dev", hex: :postgrex_cdb, override: true}
+      {:ex_doc, "~> 0.20", only: :dev},
+      {:ecto, "~> 3.1"},
+      {:ecto_sql, "~> 3.1"},
+      {:ecto_cockroachdb, "~> 1.0"},
+      {:db_connection, "~> 2.0"},
+      {:postgrex, ">= 0.14.3"}
     ]
   end
 end

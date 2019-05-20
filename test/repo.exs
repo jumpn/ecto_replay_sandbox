@@ -1,17 +1,23 @@
 defmodule EctoReplaySandbox.Integration.Repo do
   defmacro __using__(opts) do
     quote do
-      config = Application.get_env(:ecto_replay_sandbox, __MODULE__)
-      config = Keyword.put(config, :loggers, [Ecto.LogEntry,
-                                              {EctoReplaySandbox.Integration.Repo, :log, [:on_log]}])
-      Application.put_env(:ecto_replay_sandbox, __MODULE__, config)
       use Ecto.Repo, unquote(opts)
+
+      @query_event __MODULE__
+                   |> Module.split()
+                   |> Enum.map(&(&1 |> Macro.underscore() |> String.to_atom()))
+                   |> Kernel.++([:query])
+
+      def init(_, opts) do
+        fun = &EctoReplaySandbox.Integration.Repo.handle_event/4
+        :telemetry.attach_many(__MODULE__, [[:custom], @query_event], fun, :ok)
+        {:ok, opts}
+      end
     end
   end
 
-  def log(entry, key) do
-    on_log = Process.delete(key) || fn _ -> :ok end
-    on_log.(entry)
-    entry
+  def handle_event(event, latency, metadata, _config) do
+    handler = Process.delete(:telemetry) || fn _, _, _ -> :ok end
+    handler.(event, latency, metadata)
   end
 end
