@@ -1,7 +1,7 @@
 defmodule EctoReplaySandbox.Mixfile do
   use Mix.Project
 
-  @version "2.0.0"
+  @version "2.1.0"
 
   def project do
     [
@@ -38,7 +38,6 @@ defmodule EctoReplaySandbox.Mixfile do
       {:ex_doc, "~> 0.20", only: :dev},
       {:ecto, "~> 3.1"},
       {:ecto_sql, "~> 3.1"},
-      {:ecto_cockroachdb, "~> 1.0"},
       {:db_connection, "~> 2.0"},
       {:postgrex, ">= 0.14.3"}
     ]
