@@ -20,6 +20,7 @@ Code.require_file("./repo.exs", __DIR__)
 alias EctoReplaySandbox.Integration.TestRepo
 
 Application.put_env(:ecto_replay_sandbox, TestRepo,
+  migration_lock: false,
   url: Application.get_env(:ecto_replay_sandbox, :cdb_test_url) <> "/ecto_replay_sandbox_test",
   pool: EctoReplaySandbox
 )
@@ -27,7 +28,7 @@ Application.put_env(:ecto_replay_sandbox, TestRepo,
 defmodule EctoReplaySandbox.Integration.TestRepo do
   use EctoReplaySandbox.Integration.Repo,
     otp_app: :ecto_replay_sandbox,
-    adapter: Ecto.Adapters.CockroachDB
+    adapter: Ecto.Adapters.Postgres
 end
 
 # Pool repo for non-async tests
@@ -43,18 +44,18 @@ Application.put_env(:ecto_replay_sandbox, PoolRepo,
 defmodule EctoReplaySandbox.Integration.PoolRepo do
   use EctoReplaySandbox.Integration.Repo,
     otp_app: :ecto_replay_sandbox,
-    adapter: Ecto.Adapters.CockroachDB
+    adapter: Ecto.Adapters.Postgres
 end
 
 # Load support files
 Code.require_file("./schema.exs", __DIR__)
 Code.require_file("./migration.exs", __DIR__)
 
-{:ok, _} = Ecto.Adapters.CockroachDB.ensure_all_started(TestRepo.config(), :temporary)
+{:ok, _} = Ecto.Adapters.Postgres.ensure_all_started(TestRepo.config(), :temporary)
 
 # Load up the repository, start it, and run migrations
-_ = Ecto.Adapters.CockroachDB.storage_down(TestRepo.config())
-:ok = Ecto.Adapters.CockroachDB.storage_up(TestRepo.config())
+_ = Ecto.Adapters.Postgres.storage_down(TestRepo.config())
+:ok = Ecto.Adapters.Postgres.storage_up(TestRepo.config())
 
 {:ok, _pid} = TestRepo.start_link()
 {:ok, _pid} = PoolRepo.start_link()

@@ -21,12 +21,10 @@ Once the test finishes, the managed transaction is being rollbacked to restore t
 ## Installation
 
 The package can be installed by adding `ecto_replay_sandbox` to your list of dependencies in `mix.exs`.
-Make sure to also add [CockroachDB adaptor](https://hexdocs.pm/ecto_cockroachdb/readme.html).
 
 ```elixir
 def deps do
   [
-    {:ecto_cockroachdb, "~> 1.0"},
     {:ecto_replay_sandbox, "~> 2.0", only: :test},
   ]
 end

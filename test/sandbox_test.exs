@@ -10,7 +10,7 @@ defmodule EctoReplaySandboxTest do
   describe "errors" do
     test "raises if repo is not started or not exist" do
       assert_raise RuntimeError,
-                   ~r"could not lookup UnknownRepo because it was not started",
+                   ~r"could not lookup Ecto repo UnknownRepo because it was not started",
                    fn ->
                      Sandbox.mode(UnknownRepo, :manual)
                    end
