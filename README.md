@@ -25,7 +25,7 @@ The package can be installed by adding `ecto_replay_sandbox` to your list of dep
 ```elixir
 def deps do
   [
-    {:ecto_replay_sandbox, "~> 2.0", only: :test},
+    {:ecto_replay_sandbox, "~> 2.1", only: :test},
   ]
 end
 ```
